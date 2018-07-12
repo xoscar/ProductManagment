@@ -7,6 +7,7 @@ const app = express();
 
 // routes
 const productRouter = require('./routes/productRouter');
+const userRouter = require('./routes/userRouter');
 
 // configure mongo to use Promises
 mongoose.Promise = Promise;
@@ -22,6 +23,7 @@ mongoose.connect('mongodb://127.0.0.1:27017/products', {
     app.use(bodyParser.json());
 
     app.use('/products', productRouter);
+    app.use('/users', userRouter);
 
     // start application
     app.listen(5000, () => {
