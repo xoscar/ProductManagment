@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const uuid = require('uuid-v4');
 
 // libs
-const { encryptString } = require('../utils/common');
+const { encryptString, compareToEncryptedString, validateObjectKeys } = require('../utils/common');
 
 const userSchema = new mongoose.Schema({
   name: String,
@@ -26,20 +26,34 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+}, {
+  toJSON: {
+    transform: (doc, { email, user_type: userType, name, avatar }) => ({
+      email,
+      user_type: userType,
+      name,
+      avatar,
+    }),
+  },
 });
+
+/**
+ * Instance functions
+ */
+userSchema.methods.getTokenInfo = function getTokenInfo() {
+  const { token, email, user_type: userType } = this;
+  return {
+    token,
+    email,
+    user_type: userType,
+  };
+};
 
 /**
  * Static functions
  */
 userSchema.statics.validateBody = function validateBody(requestBody) {
-  const requiredFields = 'name email password user_type'.split(' ');
-
-  const errors = requiredFields.reduce((acc, requiredField) => (
-    (!requestBody[requiredField] && acc.concat([{
-      code: 'MissingField',
-      description: `Missing field: ${requiredField}`,
-    }])) || acc
-  ), []);
+  const errors = validateObjectKeys('name email password user_type'.split(' '), requestBody);
 
   if (requestBody.password.length <= 6) {
     errors.push({
@@ -47,6 +61,8 @@ userSchema.statics.validateBody = function validateBody(requestBody) {
       description: 'Password must be at least 6 characters',
     });
   }
+
+  // validacion del email, cofirm passsword
 
   return errors.length ? Promise.reject({
     error: errors,
@@ -62,6 +78,52 @@ userSchema.statics.validateBody = function validateBody(requestBody) {
           }],
         }) : Promise.resolve(requestBody)
       ));
+};
+
+userSchema.statics.login = function login(requestBody) {
+  const errors = validateObjectKeys('email password'.split(' '), requestBody);
+
+  return errors.length ? Promise.reject({
+    error: errors,
+  }) :
+
+    this.findOne({ email: requestBody.email })
+
+      .then(user => (
+        user ? (
+          compareToEncryptedString(user.password, requestBody.password)
+
+            .then(isMatch => (
+              isMatch ? Promise.resolve(user) : Promise.reject({
+                error: [{
+                  code: 'EmailOrPasswordMissmatch',
+                  description: 'email or password doesn\'t match',
+                }],
+              })
+            ))
+        ) : Promise.reject({
+          error: [{
+            code: 'EmailOrPasswordMissmatch',
+            description: 'email or password doesn\'t match',
+          }],
+        })
+      ));
+};
+
+userSchema.statics.validateToken = function validateToken(jwtPayload) {
+  // step #1: find user
+  return this.findOne({ email: jwtPayload.email })
+
+    .then(user => (
+      // step #2: validate if user exists
+      user && user.token === jwtPayload.token ? Promise.resolve(user) : Promise.reject({
+        statusCode: 401,
+        error: [{
+          code: 'NotAuthorized',
+          description: 'Invalid token',
+        }],
+      })
+    ));
 };
 
 /**

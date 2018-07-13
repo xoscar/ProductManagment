@@ -2,6 +2,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
+const logger = require('morgan');
 
 const app = express();
 
@@ -21,6 +22,7 @@ mongoose.connect('mongodb://127.0.0.1:27017/products', {
     console.log('Connected to MongoDB');
 
     app.use(bodyParser.json());
+    app.use(logger('dev'));
 
     app.use('/products', productRouter);
     app.use('/users', userRouter);
